@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Logistics Jobs SA</title>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--ink:#1d2a24;--mut:#66736c;--line:#dfe4de;--brand:#1f6f4a;--brand-ink:#fff;--accent:#e8f3ec;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121815;--card:#1a221e;--ink:#e8efea;--mut:#98a79e;--line:#2b3731;--brand:#4cbf85;--brand-ink:#08140e;--accent:#1f2d26;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121815;--card:#1a221e;--ink:#e8efea;--mut:#98a79e;--line:#2b3731;--brand:#4cbf85;--brand-ink:#08140e;--accent:#1f2d26;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--mut);margin:0 0 14px;font-size:14px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab{flex:1;padding:10px 6px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+.tab.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+.card h3{margin:0 0 4px;font-size:17px}
+.meta{color:var(--mut);font-size:14px;margin:2px 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{background:var(--accent);color:var(--ink);border-radius:999px;padding:3px 10px;font-size:13px}
+.btn{display:inline-block;padding:10px 14px;border-radius:10px;border:0;background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
+.btn.alt{background:var(--accent);color:var(--ink);border:1px solid var(--line)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+label{display:block;font-size:14px;font-weight:600;margin:10px 0 4px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:80px}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.checks label{display:flex;align-items:center;gap:6px;font-weight:400;margin:0;background:var(--accent);padding:6px 10px;border-radius:999px;font-size:14px}
+.checks input{width:auto}
+.empty,.note{color:var(--mut);text-align:center;padding:20px 8px;font-size:14px}
+.filters{display:flex;gap:8px;margin-bottom:12px}
+.filters>*{flex:1}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Logistics Jobs SA</h1>
+  <p class="sub">Drivers, forklift operators and storemen meet employers. Free for workers.</p>
+  <div class="tabs">
+    <button class="tab on" data-t="jobs">Jobs</button>
+    <button class="tab" data-t="workers">Workers</button>
+    <button class="tab" data-t="post">Post / Profile</button>
+  </div>
+  <div id="msg" class="note hide"></div>
+  <div id="jobs"></div>
+  <div id="workers" class="hide"></div>
+  <div id="post" class="hide"></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script>
+var ROLES=["Truck driver","Delivery driver","Forklift operator","Stock controller","Storeman","Crane operator","Warehouse assistant"];
+var CERTS=["Code C1","Code EC","Code EB","PrDP-D","PrDP-G","Forklift","Overhead crane","Firefighting","SHE","Stock control"];
+var db=null,uid="",jobs=[],profiles=[],tab="jobs",fRole="",fTown="";
+
+function $(i){return document.getElementById(i)}
+function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+function wa(num,text){var n=String(num||"").replace(/\D/g,"");if(n.charAt(0)==="0")n="27"+n.slice(1);return "https://wa.me/"+n+(text?"?text="+encodeURIComponent(text):"")}
+function chips(list){var d=el("div","chips");(list||[]).forEach(function(c){d.appendChild(el("span","chip",c))});return d}
+
+function setTab(t){
+  tab=t;
+  ["jobs","workers","post"].forEach(function(k){$(k).classList.toggle("hide",k!==t)});
+  document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.t===t)});
+  render();
+}
+document.querySelectorAll(".tab").forEach(function(b){b.addEventListener("click",function(){setTab(b.dataset.t)})});
+
+function filters(box){
+  var f=el("div","filters");
+  var s=el("select");
+  var o=el("option",null,"All roles");o.value="";s.appendChild(o);
+  ROLES.forEach(function(r){var x=el("option",null,r);x.value=r;if(r===fRole)x.selected=true;s.appendChild(x)});
+  s.addEventListener("change",function(){fRole=s.value;render()});
+  var i=el("input");i.placeholder="Town, e.g. East London";i.value=fTown;
+  i.addEventListener("change",function(){fTown=i.value.trim();render()});
+  f.appendChild(s);f.appendChild(i);box.appendChild(f);
+}
+function match(x){
+  if(fRole&&x.role!==fRole)return false;
+  if(fTown&&String(x.town||"").toLowerCase().indexOf(fTown.toLowerCase())<0)return false;
+  return true;
+}
+
+function renderJobs(){
+  var box=$("jobs");box.textContent="";filters(box);
+  var list=jobs.filter(match);
+  if(!list.length){box.appendChild(el("div","empty","No jobs yet. Employers can post one in the Post tab."));return}
+  list.forEach(function(j){
+    var c=el("div","card");
+    c.appendChild(el("h3",null,j.title||j.role));
+    c.appendChild(el("div","meta",[j.company,j.town].filter(Boolean).join(" · ")));
+    if(j.pay)c.appendChild(el("div","meta","Pay: "+j.pay));
+    c.appendChild(chips([j.role].concat(j.certs||[])));
+    if(j.desc)c.appendChild(el("p","meta",j.desc));
+    var r=el("div","row");
+    var a=el("a","btn","Apply on WhatsApp");a.href=wa(j.contact,"Hi, I'm interested in the "+(j.title||j.role)+" job I saw on Logistics Jobs SA.");a.target="_blank";a.rel="noopener";
+    r.appendChild(a);
+    if(uid&&j.owner===uid){var d=el("button","btn alt","Remove");d.addEventListener("click",function(){if(confirm("Remove this job?"))db.doc("jobs/"+j.id).delete().catch(fail)});r.appendChild(d)}
+    c.appendChild(r);box.appendChild(c);
+  });
+}
+
+function renderWorkers(){
+  var box=$("workers");box.textContent="";filters(box);
+  var list=profiles.filter(match);
+  if(!list.length){box.appendChild(el("div","empty","No worker profiles yet. Add yours in the Post tab."));return}
+  list.forEach(function(p){
+    var c=el("div","card");
+    c.appendChild(el("h3",null,p.name||"Worker"));
+    c.appendChild(el("div","meta",[p.role,p.town].filter(Boolean).join(" · ")));
+    if(p.years)c.appendChild(el("div","meta",p.years+" years' experience"));
+    c.appendChild(chips(p.certs));
+    if(p.about)c.appendChild(el("p","meta",p.about));
+    var r=el("div","row");
+    var u=el("button","btn","Unlock contact");
+    u.addEventListener("click",function(){alert("Paid contact unlock is coming soon.")});
+    r.appendChild(u);
+    if(uid&&p.owner===uid){var d=el("button","btn alt","Remove my profile");d.addEventListener("click",function(){if(confirm("Remove your profile?"))db.doc("profiles/"+p.id).delete().catch(fail)});r.appendChild(d)}
+    c.appendChild(r);box.appendChild(c);
+  });
+}
+
+function field(box,label,tag,ph){
+  box.appendChild(el("label",null,label));
+  var i=el(tag);if(ph)i.placeholder=ph;box.appendChild(i);return i;
+}
+function roleSelect(box){
+  box.appendChild(el("label",null,"Role"));
+  var s=el("select");ROLES.forEach(function(r){var o=el("option",null,r);o.value=r;s.appendChild(o)});
+  box.appendChild(s);return s;
+}
+function certBox(box){
+  box.appendChild(el("label",null,"Licences and certificates"));
+  var w=el("div","checks");
+  CERTS.forEach(function(c){var l=el("label");var i=el("input");i.type="checkbox";i.value=c;l.appendChild(i);l.appendChild(document.createTextNode(c));w.appendChild(l)});
+  box.appendChild(w);
+  return function(){return Array.prototype.map.call(w.querySelectorAll("input:checked"),function(i){return i.value})};
+}
+
+function renderPost(){
+  var box=$("post");box.textContent="";
+  if(!db){box.appendChild(el("div","note","Connecting... if this stays, check your internet and reload."));return}
+  var a=el("div","card");a.appendChild(el("h3",null,"I'm looking for work"));
+  var pn=field(a,"Your name","input"),pr=roleSelect(a),pt=field(a,"Town","input","East London"),py=field(a,"Years of experience","input");py.type="number";py.min="0";
+  var pc=certBox(a),pa=field(a,"About you","textarea","Short summary of your experience"),pw=field(a,"WhatsApp number","input","082 123 4567");pw.type="tel";
+  var pb=el("button","btn","Save my profile");pb.style.marginTop="12px";
+  pb.addEventListener("click",function(){
+    if(!pn.value.trim()||!pw.value.trim()||!pt.value.trim()){alert("Please fill in name, town and WhatsApp number.");return}
+    db.collection("profiles").add({name:pn.value.trim(),role:pr.value,town:pt.value.trim(),years:py.value,certs:pc(),about:pa.value.trim(),contact:pw.value.trim(),owner:uid,createdAt:Date.now()})
+      .then(function(){pn.value=pa.value=pw.value=pt.value=py.value="";setTab("workers")}).catch(fail);
+  });
+  a.appendChild(pb);box.appendChild(a);
+
+  var b=el("div","card");b.appendChild(el("h3",null,"I'm hiring"));
+  var jt=field(b,"Job title","input","Code EC driver"),jc=field(b,"Company","input"),jr=roleSelect(b),jn=field(b,"Town","input","East London"),jp=field(b,"Pay (optional)","input","R9 000 per month");
+  var jcs=certBox(b),jd=field(b,"Details","textarea","Hours, requirements, how to apply"),jw=field(b,"WhatsApp number for applicants","input");jw.type="tel";
+  var jb=el("button","btn","Post job");jb.style.marginTop="12px";
+  jb.addEventListener("click",function(){
+    if(!jt.value.trim()||!jw.value.trim()||!jn.value.trim()){alert("Please fill in title, town and WhatsApp number.");return}
+    db.collection("jobs").add({title:jt.value.trim(),company:jc.value.trim(),role:jr.value,town:jn.value.trim(),pay:jp.value.trim(),certs:jcs(),desc:jd.value.trim(),contact:jw.value.trim(),owner:uid,createdAt:Date.now()})
+      .then(function(){jt.value=jc.value=jn.value=jp.value=jd.value=jw.value="";setTab("jobs")}).catch(fail);
+  });
+  b.appendChild(jb);box.appendChild(b);
+}
+
+function render(){
+  if(tab==="jobs")renderJobs();
+  else if(tab==="workers")renderWorkers();
+  else renderPost();
+}
+function fail(e){alert("Could not save: "+(e&&e.message?e.message:"please try again"))}
+
+var firebaseConfig={
+  apiKey:"AIzaSyAuHSKjjv-9ynHEyzpV2bHkl78lcr3ugW8",
+  authDomain:"logistics-jobs-sa.firebaseapp.com",
+  projectId:"logistics-jobs-sa",
+  storageBucket:"logistics-jobs-sa.firebasestorage.app",
+  messagingSenderId:"1005267266531",
+  appId:"1:1005267266531:web:d6fbf0f02dce8310800ed6"
+};
+
+(function start(){
+  render();
+  try{
+    firebase.initializeApp(firebaseConfig);
+    firebase.auth().signInAnonymously().then(function(c){
+      uid=c.user.uid;
+      db=firebase.firestore();
+      db.collection("jobs").orderBy("createdAt","desc").limit(200).onSnapshot(function(s){
+        jobs=s.docs.map(function(d){var x=d.data();x.id=d.id;return x});
+        if(tab!=="post")render();
+      },function(e){console.error(e)});
+      db.collection("profiles").orderBy("createdAt","desc").limit(200).onSnapshot(function(s){
+        profiles=s.docs.map(function(d){var x=d.data();x.id=d.id;return x});
+        if(tab!=="post")render();
+      },function(e){console.error(e)});
+      render();
+    }).catch(function(e){console.error(e);render()});
+  }catch(e){console.error(e);render()}
+})();
+</script>
+</body>
+</html>
