@@ -58,6 +58,7 @@ textarea{min-height:80px}
 <script>
 var ROLES=["Truck driver","Delivery driver","Forklift operator","Stock controller","Storeman","Crane operator","Warehouse assistant"];
 var CERTS=["Code C1","Code EC","Code EB","PrDP-D","PrDP-G","Forklift","Overhead crane","Firefighting","SHE","Stock control"];
+var ADMIN_WA="0679867629";
 var db=null,uid="",jobs=[],profiles=[],tab="jobs",fRole="",fTown="";
 
 function $(i){return document.getElementById(i)}
@@ -120,10 +121,11 @@ function renderWorkers(){
     c.appendChild(chips(p.certs));
     if(p.about)c.appendChild(el("p","meta",p.about));
     var r=el("div","row");
-    var u=el("button","btn","Unlock contact");
-    u.addEventListener("click",function(){alert("Paid contact unlock is coming soon.")});
+    var u=el("a","btn","Unlock contact");
+    u.href=wa(ADMIN_WA,"Hi, I'd like to unlock the contact for "+(p.name||"Worker")+" ("+(p.role||"")+", "+(p.town||"")+"). Profile ID: "+p.id);
+    u.target="_blank";u.rel="noopener";
     r.appendChild(u);
-    if(uid&&p.owner===uid){var d=el("button","btn alt","Remove my profile");d.addEventListener("click",function(){if(confirm("Remove your profile?"))db.doc("profiles/"+p.id).delete().catch(fail)});r.appendChild(d)}
+    if(uid&&p.owner===uid){var d=el("button","btn alt","Remove my profile");d.addEventListener("click",function(){if(confirm("Remove your profile?"))db.doc("profiles/"+p.id).delete().then(function(){return db.doc("contacts/"+p.id).delete().catch(function(){})}).catch(fail)});r.appendChild(d)}
     c.appendChild(r);box.appendChild(c);
   });
 }
@@ -150,12 +152,16 @@ function renderPost(){
   if(!db){box.appendChild(el("div","note","Connecting... if this stays, check your internet and reload."));return}
   var a=el("div","card");a.appendChild(el("h3",null,"I'm looking for work"));
   var pn=field(a,"Your name","input"),pr=roleSelect(a),pt=field(a,"Town","input","East London"),py=field(a,"Years of experience","input");py.type="number";py.min="0";
-  var pc=certBox(a),pa=field(a,"About you","textarea","Short summary of your experience"),pw=field(a,"WhatsApp number","input","082 123 4567");pw.type="tel";
+  var pc=certBox(a),pa=field(a,"About you","textarea","Short summary of your experience"),pw=field(a,"WhatsApp number (kept private)","input","082 123 4567");pw.type="tel";
   var pb=el("button","btn","Save my profile");pb.style.marginTop="12px";
   pb.addEventListener("click",function(){
     if(!pn.value.trim()||!pw.value.trim()||!pt.value.trim()){alert("Please fill in name, town and WhatsApp number.");return}
-    db.collection("profiles").add({name:pn.value.trim(),role:pr.value,town:pt.value.trim(),years:py.value,certs:pc(),about:pa.value.trim(),contact:pw.value.trim(),owner:uid,createdAt:Date.now()})
-      .then(function(){pn.value=pa.value=pw.value=pt.value=py.value="";setTab("workers")}).catch(fail);
+    var ref=db.collection("profiles").doc();
+    var now=Date.now();
+    var batch=db.batch();
+    batch.set(ref,{name:pn.value.trim(),role:pr.value,town:pt.value.trim(),years:py.value,certs:pc(),about:pa.value.trim(),owner:uid,createdAt:now});
+    batch.set(db.collection("contacts").doc(ref.id),{contact:pw.value.trim(),owner:uid,createdAt:now});
+    batch.commit().then(function(){pn.value=pa.value=pw.value=pt.value=py.value="";setTab("workers")}).catch(fail);
   });
   a.appendChild(pb);box.appendChild(a);
 
